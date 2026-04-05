@@ -2,6 +2,8 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import geocoder
+import csv
+import os
 
 # ---------------- PAGE ----------------
 st.set_page_config(page_title="RescueNet Nigeria", layout="wide")
@@ -12,13 +14,29 @@ st.markdown("<p style='text-align: center;'>AI-Powered Emergency Response System
 
 st.divider()
 
+# ---------------- SAVE FUNCTION ----------------
+def save_report(lat, lon, incident, agency, description):
+    file_exists = os.path.isfile("reports.csv")
+
+    with open("reports.csv", mode="a", newline="") as file:
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow(["Latitude", "Longitude", "Incident", "Agency", "Description"])
+
+        writer.writerow([lat, lon, incident, agency, description])
+
 # ---------------- AUTO LOCATION ----------------
 if "lat" not in st.session_state:
-    g = geocoder.ip('me')
-    if g.ok:
-        st.session_state.lat = g.latlng[0]
-        st.session_state.lon = g.latlng[1]
-    else:
+    try:
+        g = geocoder.ip('me')
+        if g.ok:
+            st.session_state.lat = g.latlng[0]
+            st.session_state.lon = g.latlng[1]
+        else:
+            st.session_state.lat = None
+            st.session_state.lon = None
+    except:
         st.session_state.lat = None
         st.session_state.lon = None
 
@@ -90,10 +108,20 @@ with col2:
 
     if st.button("🚀 Report Incident"):
         if st.session_state.lat is not None:
-            st.success("✅ Report Sent Successfully")
+
+            save_report(
+                st.session_state.lat,
+                st.session_state.lon,
+                incident,
+                agency,
+                description
+            )
+
+            st.success("✅ Report Saved Successfully")
             st.write(f"📍 Location: {st.session_state.lat}, {st.session_state.lon}")
             st.write(f"🚨 Agency: {agency}")
             st.write(f"📞 Contact: {agency_number}")
+
         else:
             st.error("⚠️ Location not available")
 
