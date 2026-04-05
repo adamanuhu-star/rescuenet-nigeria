@@ -11,11 +11,25 @@ st.set_page_config(page_title="RescueNet Nigeria", layout="wide")
 
 # ---------------- TITLE ----------------
 st.markdown("<h1 style='text-align: center;'>🚨 RescueNet Nigeria 🇳🇬</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>AI-Powered Emergency Response System</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Emergency Response System</p>", unsafe_allow_html=True)
+
+# ---------------- LANGUAGE ----------------
+language = st.sidebar.selectbox("🌍 Language", ["English", "Pidgin", "Hausa", "Yoruba", "Igala"])
+
+def translate(text):
+    translations = {
+        "Report Incident": {
+            "Pidgin": "Report Wahala",
+            "Hausa": "Kai Rahoton Hadari",
+            "Yoruba": "Jabo Iṣẹlẹ",
+            "Igala": "Ríkọ Ọjọ́"
+        }
+    }
+    return translations.get(text, {}).get(language, text)
 
 st.divider()
 
-# ---------------- SAVE FUNCTION ----------------
+# ---------------- SAVE ----------------
 def save_report(lat, lon, incident, agency, description):
     file_exists = os.path.isfile("reports.csv")
 
@@ -27,17 +41,16 @@ def save_report(lat, lon, incident, agency, description):
 
         writer.writerow([lat, lon, incident, agency, description])
 
-# ---------------- LOAD FUNCTION ----------------
+# ---------------- LOAD ----------------
 def load_reports():
     if os.path.exists("reports.csv"):
         return pd.read_csv("reports.csv")
-    else:
-        return pd.DataFrame(columns=["Latitude", "Longitude", "Incident", "Agency", "Description"])
+    return pd.DataFrame(columns=["Latitude", "Longitude", "Incident", "Agency", "Description"])
 
 # ---------------- MENU ----------------
 menu = st.sidebar.selectbox("Menu", ["Report Incident", "Dashboard"])
 
-# ---------------- AUTO LOCATION ----------------
+# ---------------- LOCATION ----------------
 if "lat" not in st.session_state:
     try:
         g = geocoder.ip('me')
@@ -51,19 +64,19 @@ if "lat" not in st.session_state:
         st.session_state.lat = None
         st.session_state.lon = None
 
-# ================= REPORT PAGE =================
+# ================= REPORT =================
 if menu == "Report Incident":
 
     col1, col2 = st.columns([1, 1])
 
+    # MAP
     with col1:
         st.subheader("📍 Location")
 
-        lat = st.session_state.lat if st.session_state.lat else 9.0820
-        lon = st.session_state.lon if st.session_state.lon else 8.6753
+        lat = st.session_state.lat or 9.0820
+        lon = st.session_state.lon or 8.6753
 
         m = folium.Map(location=[lat, lon], zoom_start=10)
-
         map_data = st_folium(m, width=500, height=350)
 
         if map_data and map_data.get("last_clicked"):
@@ -71,10 +84,11 @@ if menu == "Report Incident":
             st.session_state.lon = map_data["last_clicked"]["lng"]
 
         if st.session_state.lat:
-            st.success(f"📍 {st.session_state.lat}, {st.session_state.lon}")
+            st.success(f"{st.session_state.lat}, {st.session_state.lon}")
         else:
             st.warning("Select location")
 
+    # FORM
     with col2:
         st.subheader("🚨 Report Incident")
 
@@ -90,27 +104,29 @@ if menu == "Report Incident":
         number = ""
 
         if incident == "Road Accident":
-            agency = "FRSC"
-            number = "122"
+            agency, number = "FRSC", "122"
         elif incident == "Fire Outbreak":
-            agency = "Fire Service"
-            number = "112"
+            agency, number = "Fire Service", "112"
         elif incident == "Flood":
-            agency = "NEMA"
-            number = "0800-ANEMA"
+            agency, number = "NEMA", "0800-ANEMA"
         elif incident == "Kidnapping":
-            agency = "Police"
-            number = "112"
+            agency, number = "Police", "112"
         elif incident == "Critical National Asset Vandalism":
-            agency = "NSCDC"
-            number = "0800-NSCDC"
+            agency, number = "NSCDC", "0800-NSCDC"
 
         st.info(f"{agency} | 📞 {number}")
 
-        description = st.text_area("Describe situation")
+        description = st.text_area("📝 Describe situation")
+
+        # 📸 IMAGE UPLOAD
+        image = st.file_uploader("📷 Upload Image", type=["jpg", "png", "jpeg"])
+
+        # 🎥 VIDEO UPLOAD
+        video = st.file_uploader("🎥 Upload Video", type=["mp4", "mov"])
 
         if st.button("🚀 Report Incident"):
             if st.session_state.lat is not None:
+
                 save_report(
                     st.session_state.lat,
                     st.session_state.lon,
@@ -118,9 +134,17 @@ if menu == "Report Incident":
                     agency,
                     description
                 )
-                st.success("✅ Report saved!")
+
+                st.success("✅ Report submitted")
+
+                if image:
+                    st.image(image)
+
+                if video:
+                    st.video(video)
+
             else:
-                st.error("⚠️ Select location on map")
+                st.error("⚠️ Select location first")
 
 # ================= DASHBOARD =================
 elif menu == "Dashboard":
@@ -130,7 +154,35 @@ elif menu == "Dashboard":
     data = load_reports()
 
     if not data.empty:
-
         st.dataframe(data)
 
-        csv_file = data
+        csv_file = data.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Download Reports", csv_file, "reports.csv")
+
+        st.divider()
+
+        st.subheader("🗺️ Live Incident Map")
+
+        m = folium.Map(location=[9.0820, 8.6753], zoom_start=6)
+
+        for _, row in data.iterrows():
+            folium.Marker(
+                [row["Latitude"], row["Longitude"]],
+                popup=f"{row['Incident']} - {row['Agency']}",
+                icon=folium.Icon(color="red")
+            ).add_to(m)
+
+        st_folium(m, width=800, height=500)
+
+    else:
+        st.warning("No reports yet")
+
+# ---------------- FOOTER ----------------
+st.divider()
+st.markdown("### 🚑 Emergency Contacts")
+
+st.write("🚓 Police: 112")
+st.write("🚧 FRSC: 122")
+st.write("🚒 Fire: 112")
+st.write("🌊 NEMA: 0800-ANEMA")
+st.write("🛡️ NSCDC: 0800-NSCDC")
