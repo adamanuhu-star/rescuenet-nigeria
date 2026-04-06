@@ -9,12 +9,11 @@ import pandas as pd
 # ---------------- PAGE ----------------
 st.set_page_config(page_title="RescueNet Nigeria", layout="wide")
 
-# ---------------- TITLE ----------------
-st.markdown("<h1 style='text-align: center;'>🚨 RescueNet Nigeria 🇳🇬</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Emergency Response System</p>", unsafe_allow_html=True)
-
 # ---------------- LANGUAGE ----------------
-language = st.sidebar.selectbox("🌍 Language", ["English", "Pidgin", "Hausa", "Yoruba", "Igala"])
+language = st.sidebar.selectbox(
+    "🌍 Language",
+    ["English", "Pidgin", "Hausa", "Yoruba", "Igbo"]
+)
 
 def translate(text):
     translations = {
@@ -22,10 +21,20 @@ def translate(text):
             "Pidgin": "Report Wahala",
             "Hausa": "Kai Rahoton Hadari",
             "Yoruba": "Jabo Iṣẹlẹ",
-            "Igala": "Ríkọ Ọjọ́"
+            "Igbo": "Kọwaa Ihe Mere"
+        },
+        "Describe situation": {
+            "Pidgin": "Explain wetin happen",
+            "Hausa": "Bayyana abinda ya faru",
+            "Yoruba": "Ṣàlàyé ohun tó ṣẹlẹ̀",
+            "Igbo": "Kọwaa ihe mere"
         }
     }
     return translations.get(text, {}).get(language, text)
+
+# ---------------- TITLE ----------------
+st.markdown("<h1 style='text-align: center;'>🚨 RescueNet Nigeria 🇳🇬</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Emergency Response System</p>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -64,12 +73,12 @@ if "lat" not in st.session_state:
         st.session_state.lat = None
         st.session_state.lon = None
 
-# ================= REPORT =================
+# ================= REPORT PAGE =================
 if menu == "Report Incident":
 
     col1, col2 = st.columns([1, 1])
 
-    # MAP
+    # -------- MAP --------
     with col1:
         st.subheader("📍 Location")
 
@@ -84,13 +93,13 @@ if menu == "Report Incident":
             st.session_state.lon = map_data["last_clicked"]["lng"]
 
         if st.session_state.lat:
-            st.success(f"{st.session_state.lat}, {st.session_state.lon}")
+            st.success(f"📍 {st.session_state.lat}, {st.session_state.lon}")
         else:
             st.warning("Select location")
 
-    # FORM
+    # -------- FORM --------
     with col2:
-        st.subheader("🚨 Report Incident")
+        st.subheader("🚨 " + translate("Report Incident"))
 
         incident = st.selectbox("Incident Type", [
             "Road Accident",
@@ -116,12 +125,12 @@ if menu == "Report Incident":
 
         st.info(f"{agency} | 📞 {number}")
 
-        description = st.text_area("📝 Describe situation")
+        description = st.text_area("📝 " + translate("Describe situation"))
 
-        # 📸 IMAGE UPLOAD
+        # 📷 IMAGE
         image = st.file_uploader("📷 Upload Image", type=["jpg", "png", "jpeg"])
 
-        # 🎥 VIDEO UPLOAD
+        # 🎥 VIDEO
         video = st.file_uploader("🎥 Upload Video", type=["mp4", "mov"])
 
         if st.button("🚀 Report Incident"):
@@ -135,7 +144,7 @@ if menu == "Report Incident":
                     description
                 )
 
-                st.success("✅ Report submitted")
+                st.success("✅ Report submitted successfully")
 
                 if image:
                     st.image(image)
@@ -144,7 +153,7 @@ if menu == "Report Incident":
                     st.video(video)
 
             else:
-                st.error("⚠️ Select location first")
+                st.error("⚠️ Please select location on map")
 
 # ================= DASHBOARD =================
 elif menu == "Dashboard":
@@ -154,6 +163,7 @@ elif menu == "Dashboard":
     data = load_reports()
 
     if not data.empty:
+
         st.dataframe(data)
 
         csv_file = data.to_csv(index=False).encode("utf-8")
