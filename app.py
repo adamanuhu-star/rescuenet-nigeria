@@ -5,8 +5,11 @@ import geocoder
 import csv
 import os
 import pandas as pd
-import whisper
+from openai import OpenAI
 import tempfile
+
+# ---------------- API ----------------
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # ---------------- PAGE ----------------
 st.set_page_config(page_title="RescueNet Nigeria", layout="wide")
@@ -39,24 +42,25 @@ def translate(text):
     }
     return translations.get(text, {}).get(language, text)
 
-# ---------------- WHISPER ----------------
-@st.cache_resource
-def load_model():
-    return whisper.load_model("base")
-
+# ---------------- WHISPER API ----------------
 def whisper_transcribe(audio_file):
     try:
-        model = load_model()
-
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(audio_file.read())
             tmp_path = tmp.name
 
-        result = model.transcribe(tmp_path)
-        return result["text"]
+        with open(tmp_path, "rb") as audio:
+            transcript = client.audio.transcriptions.create(
+                model="gpt-4o-mini-transcribe",
+                file=audio
+            )
 
-    except Exception:
-        return "⚠️ Voice processing failed"
+        os.remove(tmp_path)
+
+        return transcript.text
+
+    except Exception as e:
+        return f"⚠️ Voice error: {str(e)}"
 
 # ---------------- AI DETECTION ----------------
 def detect_incident(text):
@@ -64,13 +68,13 @@ def detect_incident(text):
 
     if "accident" in text or "crash" in text:
         return "Road Accident", "FRSC", "122"
-    elif "fire" in text or "burn":
+    elif "fire" in text or "burn" in text:
         return "Fire Outbreak", "Fire Service", "112"
-    elif "flood" in text or "water":
+    elif "flood" in text or "water" in text:
         return "Flood", "NEMA", "0800-ANEMA"
-    elif "kidnap" in text or "abduct":
+    elif "kidnap" in text or "abduct" in text:
         return "Kidnapping", "Police", "112"
-    elif "vandal" in text or "pipeline":
+    elif "vandal" in text or "pipeline" in text:
         return "Critical National Asset Vandalism", "NSCDC", "0800-NSCDC"
 
     return None, None, None
@@ -140,20 +144,20 @@ if menu == "Report Incident":
         agency = ""
         number = ""
 
-        # VOICE
+        # VOICE (API)
         audio = st.file_uploader("🎙️ Upload Voice", type=["wav", "mp3", "m4a", "ogg"])
 
         if audio:
             st.audio(audio)
 
-            with st.spinner("Listening..."):
+            with st.spinner("🧠 AI processing voice..."):
                 voice_text = whisper_transcribe(audio)
 
-            if "⚠️" in voice_text:
+            if voice_text.startswith("⚠️"):
                 st.error(voice_text)
                 description = st.text_area("📝 " + translate("Describe situation"))
             else:
-                st.success("Voice converted")
+                st.success("✅ Voice converted")
                 description = st.text_area("📝 " + translate("Describe situation"), value=voice_text)
         else:
             description = st.text_area("📝 " + translate("Describe situation"))
@@ -191,7 +195,6 @@ if menu == "Report Incident":
 
         st.info(f"{agency} | 📞 {number}")
 
-        # Uploads
         image = st.file_uploader("📷 Image", type=["jpg", "png", "jpeg"])
         video = st.file_uploader("🎥 Video", type=["mp4", "mov"])
 
@@ -204,7 +207,6 @@ if menu == "Report Incident":
                     agency,
                     description
                 )
-
                 st.success("Report submitted")
 
                 if image:
