@@ -1,6 +1,5 @@
 streamlit
 folium
 streamlit-folium
-geocoder
 pandas
-openai>=1.0.0
+twilio
