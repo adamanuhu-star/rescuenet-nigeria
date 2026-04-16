@@ -1,178 +1,166 @@
 import streamlit as st
 import pandas as pd
-import folium
-from streamlit_folium import st_folium
-from twilio.rest import Client
+from datetime import datetime
 
-# =========================
+# Optional imports (safe loading)
+try:
+    from twilio.rest import Client
+    TWILIO_AVAILABLE = True
+except:
+    TWILIO_AVAILABLE = False
+
+# -----------------------------
 # PAGE CONFIG
-# =========================
+# -----------------------------
 st.set_page_config(page_title="RescueNet Nigeria 🇳🇬", layout="wide")
 
 st.title("🚨 RescueNet Nigeria 🇳🇬")
 
-# =========================
-# SESSION STATE
-# =========================
-if "lat" not in st.session_state:
-    st.session_state.lat = None
-    st.session_state.lon = None
-
-# =========================
+# -----------------------------
 # INCIDENT → AGENCY MAP
-# =========================
+# -----------------------------
 AGENCY_MAP = {
     "Road Accident": "FRSC",
     "Fire Outbreak": "Fire Service",
     "Flood": "NEMA",
     "Kidnapping": "Police",
-    "Critical National Asset Vandalism": "NSCDC"
+    "Critical Asset Vandalism": "NSCDC"
 }
 
-# =========================
-# SAVE REPORT
-# =========================
-def save_report(lat, lon, incident, agency, description):
-    df = pd.DataFrame([{
-        "lat": lat,
-        "lon": lon,
-        "incident": incident,
-        "agency": agency,
-        "description": description
-    }])
-
+# -----------------------------
+# GET PHONE PER AGENCY
+# -----------------------------
+def get_agency_phone(agency):
     try:
-        old = pd.read_csv("reports.csv")
-        df = pd.concat([old, df], ignore_index=True)
+        if agency == "FRSC":
+            return st.secrets.get("FRSC_PHONE")
+        elif agency == "Fire Service":
+            return st.secrets.get("FIRE_PHONE")
+        elif agency == "NEMA":
+            return st.secrets.get("NEMA_PHONE")
+        elif agency == "Police":
+            return st.secrets.get("POLICE_PHONE")
+        elif agency == "NSCDC":
+            return st.secrets.get("NSCDC_PHONE")
     except:
-        pass
+        return None
 
-    df.to_csv("reports.csv", index=False)
+# -----------------------------
+# SEND SMS FUNCTION
+# -----------------------------
+def send_sms(incident, agency, desc, lat, lon):
 
-# =========================
-# SEND SMS
-# =========================
-def send_sms(incident, agency, description, lat, lon):
+    if not TWILIO_AVAILABLE:
+        return "Twilio not installed"
+
     try:
-        client = Client(
-            st.secrets["TWILIO_SID"],
-            st.secrets["TWILIO_AUTH_TOKEN"]
-        )
+        sid = st.secrets.get("TWILIO_SID")
+        token = st.secrets.get("TWILIO_AUTH_TOKEN")
+        sender = st.secrets.get("TWILIO_PHONE")
 
-        message = f"""🚨 RescueNet Nigeria 🇳🇬
+        if not sid or not token or not sender:
+            return "Missing Twilio config"
+
+        client = Client(sid, token)
+
+        to_number = get_agency_phone(agency)
+
+        if not to_number:
+            return f"No number for {agency}"
+
+        msg = f"""🚨 RescueNet Nigeria 🇳🇬
 Incident: {incident}
 Agency: {agency}
 Location: {lat}, {lon}
 
 Details:
-{description}
+{desc}
 """
 
         client.messages.create(
-            body=message,
-            from_=st.secrets["TWILIO_PHONE"],
-            to=st.secrets["ALERT_PHONE"]
+            body=msg,
+            from_=sender,
+            to=to_number
         )
 
-        return True
+        return "sent"
 
     except Exception as e:
         return str(e)
 
-# =========================
-# SIDEBAR MENU
-# =========================
+# -----------------------------
+# SESSION STORAGE
+# -----------------------------
+if "reports" not in st.session_state:
+    st.session_state.reports = []
+
+# -----------------------------
+# MENU
+# -----------------------------
 menu = st.sidebar.selectbox("Menu", ["Report Incident", "Dashboard"])
 
-# =========================
+# =============================
 # REPORT PAGE
-# =========================
+# =============================
 if menu == "Report Incident":
 
-    st.subheader("📍 Select Location")
+    st.subheader("📍 Report Emergency")
 
-    # Map
-    m = folium.Map(location=[9.08, 8.67], zoom_start=6)
-    m.add_child(folium.LatLngPopup())
+    col1, col2 = st.columns(2)
 
-    map_data = st_folium(m, height=400, width=700)
+    with col1:
+        incident = st.selectbox("Select Incident", list(AGENCY_MAP.keys()))
+        agency = AGENCY_MAP[incident]
 
-    if map_data and map_data.get("last_clicked"):
-        st.session_state.lat = map_data["last_clicked"]["lat"]
-        st.session_state.lon = map_data["last_clicked"]["lng"]
+        st.info(f"🚑 Assigned Agency: {agency}")
 
-        st.success(f"Location selected: {st.session_state.lat}, {st.session_state.lon}")
+        desc = st.text_area("Describe incident")
 
-    # Form
-    st.subheader("📝 Incident Details")
+        file = st.file_uploader("Upload Image/Video", type=["jpg", "png", "mp4"])
 
-    incident = st.selectbox("Select Incident", list(AGENCY_MAP.keys()))
-    agency = AGENCY_MAP[incident]
+    with col2:
+        st.markdown("### 📌 Select Location")
 
-    st.info(f"Responsible Agency: {agency}")
+        lat = st.number_input("Latitude", value=9.0820)
+        lon = st.number_input("Longitude", value=8.6753)
 
-    description = st.text_area("Describe the situation")
+        st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}), zoom=6)
 
-    # Uploads
-    image = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
-    video = st.file_uploader("Upload Video", type=["mp4"])
+    if st.button("🚨 Submit Report"):
 
-    # Submit
-    if st.button("🚀 Submit Report"):
-
-        if st.session_state.lat is not None:
-
-            save_report(
-                st.session_state.lat,
-                st.session_state.lon,
-                incident,
-                agency,
-                description
-            )
-
-            sms_status = send_sms(
-                incident,
-                agency,
-                description,
-                st.session_state.lat,
-                st.session_state.lon
-            )
-
-            if sms_status == True:
-                st.success("✅ Report sent successfully + SMS alert delivered")
-            else:
-                st.warning(f"Report saved, but SMS failed: {sms_status}")
-
-            if image:
-                st.image(image)
-
-            if video:
-                st.video(video)
-
+        if not desc:
+            st.warning("Please describe the incident")
         else:
-            st.error("❌ Please select location on the map")
+            report = {
+                "incident": incident,
+                "agency": agency,
+                "desc": desc,
+                "lat": lat,
+                "lon": lon,
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M")
+            }
 
-# =========================
+            st.session_state.reports.append(report)
+
+            sms_status = send_sms(incident, agency, desc, lat, lon)
+
+            if sms_status == "sent":
+                st.success("✅ Report saved & sent to agency")
+            else:
+                st.warning(f"⚠ Report saved, but SMS failed: {sms_status}")
+
+# =============================
 # DASHBOARD
-# =========================
+# =============================
 elif menu == "Dashboard":
 
     st.subheader("📊 Live Incident Dashboard")
 
-    try:
-        df = pd.read_csv("reports.csv")
+    if len(st.session_state.reports) == 0:
+        st.info("No reports yet")
+    else:
+        df = pd.DataFrame(st.session_state.reports)
 
-        m = folium.Map(location=[9.08, 8.67], zoom_start=6)
+        st.dataframe(df, use_container_width=True)
 
-        for _, row in df.iterrows():
-            folium.Marker(
-                [row["lat"], row["lon"]],
-                popup=f"{row['incident']} - {row['agency']}"
-            ).add_to(m)
-
-        st_folium(m, height=500, width=900)
-
-        st.dataframe(df)
-
-    except:
-        st.warning("No reports available yet")
+        st.map(df.rename(columns={"lat": "lat", "lon": "lon"}))
