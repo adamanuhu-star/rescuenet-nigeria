@@ -6,10 +6,35 @@ import urllib.parse
 import sqlite3
 
 # -----------------------------
-# DATABASE
+# DATABASE INIT (FIXED)
 # -----------------------------
 conn = sqlite3.connect("rescuenet.db", check_same_thread=False)
 c = conn.cursor()
+
+# CREATE TABLES AUTOMATICALLY
+c.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    password TEXT,
+    role TEXT
+)
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident TEXT,
+    agency TEXT,
+    description TEXT,
+    lat REAL,
+    lon REAL,
+    user TEXT,
+    time TEXT
+)
+""")
+
+conn.commit()
 
 # -----------------------------
 # PAGE CONFIG
@@ -173,4 +198,4 @@ else:
         st.dataframe(df)
 
         if not df.empty:
-            st.map(df.rename(columns={"lat": "lat", "lon": "lon"}))
+            st.map(df)
