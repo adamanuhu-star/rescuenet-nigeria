@@ -6,12 +6,11 @@ import urllib.parse
 import sqlite3
 
 # -----------------------------
-# DATABASE INIT (FIXED)
+# DATABASE INIT
 # -----------------------------
 conn = sqlite3.connect("rescuenet.db", check_same_thread=False)
 c = conn.cursor()
 
-# CREATE TABLES AUTOMATICALLY
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,11 +39,10 @@ conn.commit()
 # PAGE CONFIG
 # -----------------------------
 st.set_page_config(page_title="RescueNet Nigeria 🇳🇬", layout="wide")
-
 st.title("🚨 RescueNet Nigeria 🇳🇬")
 
 # -----------------------------
-# HASH PASSWORD
+# PASSWORD HASH
 # -----------------------------
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -74,11 +72,11 @@ AGENCY_MAP = {
 }
 
 AGENCY_PHONES = {
-    "FRSC": "+2340000000000",
-    "Fire Service": "+2340000000000",
-    "NEMA": "+2340000000000",
-    "Police": "+2340000000000",
-    "NSCDC": "+2340000000000"
+    "FRSC": "+234XXXXXXXXXX",
+    "Fire Service": "+234XXXXXXXXXX",
+    "NEMA": "+234XXXXXXXXXX",
+    "Police": "+234XXXXXXXXXX",
+    "NSCDC": "+234XXXXXXXXXX"
 }
 
 def send_alert(incident, agency, desc, lat, lon):
@@ -120,8 +118,11 @@ if not st.session_state.user:
         pwd = st.text_input("Password", type="password")
 
         if st.button("Sign Up"):
-            create_user(user, pwd)
-            st.success("Account created! Login now")
+            if user and pwd:
+                create_user(user, pwd)
+                st.success("Account created! Login now")
+            else:
+                st.warning("Enter username and password")
 
     elif menu == "Login":
         st.subheader("Login")
@@ -155,47 +156,106 @@ else:
 
     menu = st.sidebar.selectbox("Menu", ["Report Incident", "Dashboard"])
 
+    # =============================
+    # REPORT INCIDENT
+    # =============================
     if menu == "Report Incident":
 
         st.subheader("📍 Report Emergency")
 
-        incident = st.selectbox("Select Incident", list(AGENCY_MAP.keys()))
-        agency = AGENCY_MAP[incident]
+        col1, col2 = st.columns(2)
 
-        desc = st.text_area("Describe incident")
+        with col1:
+            incident = st.selectbox("Select Incident", list(AGENCY_MAP.keys()))
+            agency = AGENCY_MAP[incident]
 
-        lat = st.number_input("Latitude", value=9.0820)
-        lon = st.number_input("Longitude", value=8.6753)
+            st.info(f"🚑 Assigned Agency: {agency}")
 
-        st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}))
+            desc = st.text_area("Describe incident")
 
-        if st.button("Submit Report"):
+        with col2:
+            lat = st.number_input("Latitude", value=9.0820)
+            lon = st.number_input("Longitude", value=8.6753)
 
-            c.execute("""
-            INSERT INTO reports (incident, agency, description, lat, lon, user, time)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (incident, agency, desc, lat, lon, username,
-                  datetime.now().strftime("%Y-%m-%d %H:%M")))
+            st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}), zoom=6)
 
-            conn.commit()
+        if st.button("🚨 Submit Report"):
 
-            links = send_alert(incident, agency, desc, lat, lon)
+            if not desc:
+                st.warning("Please describe the incident")
+            else:
+                c.execute("""
+                INSERT INTO reports (incident, agency, description, lat, lon, user, time)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (incident, agency, desc, lat, lon, username,
+                      datetime.now().strftime("%Y-%m-%d %H:%M")))
 
-            st.success("Report submitted!")
+                conn.commit()
 
-            st.markdown(f"[📲 WhatsApp Alert]({links['whatsapp']})")
-            st.markdown(f"[📞 Call Agency]({links['call']})")
+                links = send_alert(incident, agency, desc, lat, lon)
 
+                st.success("✅ Report submitted!")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown(f"[📲 WhatsApp Alert]({links['whatsapp']})")
+
+                with col2:
+                    st.markdown(f"[📞 Call Agency]({links['call']})")
+
+    # =============================
+    # DASHBOARD
+    # =============================
     elif menu == "Dashboard":
 
-        st.subheader("📊 Dashboard")
+        st.subheader("📊 Admin Dashboard" if role == "admin" else "📊 My Reports")
 
+        # ADMIN VIEW
         if role == "admin":
-            df = pd.read_sql("SELECT * FROM reports", conn)
+
+            tab1, tab2 = st.tabs(["📁 Reports", "👥 Users"])
+
+            # REPORTS
+            with tab1:
+                df = pd.read_sql("SELECT * FROM reports", conn)
+
+                if df.empty:
+                    st.info("No reports yet")
+                else:
+                    st.dataframe(df, use_container_width=True)
+                    st.map(df)
+
+                    report_id = st.number_input("Report ID to delete", step=1)
+
+                    if st.button("Delete Report"):
+                        c.execute("DELETE FROM reports WHERE id=?", (report_id,))
+                        conn.commit()
+                        st.success("Report deleted")
+                        st.rerun()
+
+            # USERS
+            with tab2:
+                users_df = pd.read_sql("SELECT id, username, role FROM users", conn)
+                st.dataframe(users_df, use_container_width=True)
+
+                user_id = st.number_input("User ID to delete", step=1)
+
+                if user_id == st.session_state.user[0]:
+                    st.warning("You cannot delete yourself")
+                else:
+                    if st.button("Delete User"):
+                        c.execute("DELETE FROM users WHERE id=?", (user_id,))
+                        conn.commit()
+                        st.success("User deleted")
+                        st.rerun()
+
+        # NORMAL USER
         else:
             df = pd.read_sql(f"SELECT * FROM reports WHERE user='{username}'", conn)
 
-        st.dataframe(df)
-
-        if not df.empty:
-            st.map(df)
+            if df.empty:
+                st.info("No reports yet")
+            else:
+                st.dataframe(df, use_container_width=True)
+                st.map(df)
